@@ -82,12 +82,13 @@ v6ip=
 
 ## TUI controls
 
-- `Tab` / `Shift+Tab`: move between fields and buttons
+- `Tab` / `Shift+Tab` / mouse wheel: move between fields and buttons
 - `Enter`: jump to the next field or activate the selected button
 - `Ctrl+S`: save config
 - `Ctrl+T`: save config and test login immediately
 - `Ctrl+A`: toggle current-user autostart
 - `F2`: show or hide the password
+- `?`: show or hide shortcut hints (hidden by default)
 - `Esc`: quit without saving further changes
 
 Use the `Autostart: ON/OFF` button in TUI to toggle current-user autostart.
@@ -95,6 +96,11 @@ You can toggle it by:
 - selecting that button and pressing `Enter` or `Space`
 - clicking it with the mouse
 - pressing `Ctrl+A`
+
+Mouse support:
+- click any input field to focus and place the cursor
+- click any button to trigger its action
+- drag with left mouse button inside an input field to select text
 
 ## Campus network detection
 
