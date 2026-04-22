@@ -29,7 +29,7 @@ use super::{
     status::{StatusKind, StatusMessage},
 };
 
-const FIELD_COUNT: usize = 8;
+const FIELD_COUNT: usize = 9;
 const BUTTON_COUNT: usize = 4;
 const LABEL_WIDTH: usize = 24;
 const EVENT_POLL_INTERVAL: Duration = Duration::from_millis(200);
@@ -39,9 +39,10 @@ const FIELD_PASSWORD: usize = 1;
 const FIELD_PORTAL_URL: usize = 2;
 const FIELD_PROBE_URL: usize = 3;
 const FIELD_ONLINE_INTERVAL: usize = 4;
-const FIELD_REQUEST_TIMEOUT: usize = 5;
-const FIELD_CAMPUS_CIDRS: usize = 6;
-const FIELD_GATEWAYS: usize = 7;
+const FIELD_OFFLINE_INTERVAL: usize = 5;
+const FIELD_REQUEST_TIMEOUT: usize = 6;
+const FIELD_CAMPUS_CIDRS: usize = 7;
+const FIELD_GATEWAYS: usize = 8;
 
 const BUTTON_SAVE: usize = 0;
 const BUTTON_TEST: usize = 1;
@@ -125,6 +126,11 @@ impl SetupApp {
                 InputField::new(
                     "Online check interval",
                     config.daemon.online_check_interval_secs.to_string(),
+                    false,
+                ),
+                InputField::new(
+                    "Offline check interval",
+                    config.daemon.offline_check_interval_secs.to_string(),
                     false,
                 ),
                 InputField::new(
@@ -394,7 +400,7 @@ impl SetupApp {
         let help = Paragraph::new(vec![
             Line::from("Esc/Ctrl+C: quit"),
             Line::from("Tab/Shift+Tab: move     Enter: next/activate"),
-            Line::from("Ctrl+S: save&test       Ctrl+T: save&test"),
+            Line::from("Ctrl+S: save            Ctrl+T: save&test"),
             Line::from("Ctrl+A: autostart       F2: show password"),
         ])
         .wrap(Wrap { trim: true });
@@ -447,22 +453,36 @@ impl SetupApp {
             x: inner.x,
             y: inner.y + FIELD_COUNT as u16,
             width: inner.width,
-            height: 3,
+            height: 2,
         };
         let config_path = match AppConfig::config_path() {
             Ok(path) => path.display().to_string(),
             Err(error) => format!("unavailable: {error}"),
         };
-        let autostart_state = match autostart_enabled() {
-            Ok(true) => "enabled",
-            Ok(false) => "disabled",
-            Err(_) => "unavailable",
+        let log_path = match AppConfig::log_path() {
+            Ok(path) => path.display().to_string(),
+            Err(error) => format!("unavailable: {error}"),
         };
         frame.render_widget(
             Paragraph::new(vec![
-                Line::from(format!("Config path: {config_path}")),
-                Line::from(format!("Autostart state: {autostart_state}")),
-                Line::from("Mouse: click fields/buttons, wheel switch focus, drag to select text"),
+                Line::from(vec![
+                    Span::raw("Config path: "),
+                    Span::styled(
+                        config_path,
+                        Style::default()
+                            .fg(Color::LightBlue)
+                            .add_modifier(Modifier::UNDERLINED),
+                    ),
+                ]),
+                Line::from(vec![
+                    Span::raw("Log path: "),
+                    Span::styled(
+                        log_path,
+                        Style::default()
+                            .fg(Color::LightBlue)
+                            .add_modifier(Modifier::UNDERLINED),
+                    ),
+                ]),
             ])
             .wrap(Wrap { trim: true }),
             path_line,
@@ -470,7 +490,7 @@ impl SetupApp {
 
         let button_row = Rect {
             x: inner.x,
-            y: inner.y + FIELD_COUNT as u16 + 3,
+            y: inner.y + FIELD_COUNT as u16 + 2,
             width: inner.width,
             height: 1,
         };
@@ -737,6 +757,11 @@ impl SetupApp {
             .trim()
             .parse::<u64>()
             .with_context(|| "online check interval must be a positive integer")?;
+        let offline_check_interval_secs = self.fields[FIELD_OFFLINE_INTERVAL]
+            .value()
+            .trim()
+            .parse::<u64>()
+            .with_context(|| "offline check interval must be a positive integer")?;
         let request_timeout_secs = self.fields[FIELD_REQUEST_TIMEOUT]
             .value()
             .trim()
@@ -757,6 +782,7 @@ impl SetupApp {
             },
             daemon: DaemonConfig {
                 online_check_interval_secs,
+                offline_check_interval_secs,
             },
             campus: CampusConfig {
                 ipv4_cidrs: campus_ipv4_cidrs,

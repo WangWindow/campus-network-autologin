@@ -1,6 +1,7 @@
 mod autostart;
 mod config;
 mod daemon;
+mod logging;
 mod network;
 mod portal;
 mod tui;
@@ -82,6 +83,8 @@ struct ConfigSetArgs {
     #[arg(long)]
     online_check_interval_secs: Option<u64>,
     #[arg(long)]
+    offline_check_interval_secs: Option<u64>,
+    #[arg(long)]
     request_timeout_secs: Option<u64>,
     #[arg(long, value_delimiter = ',')]
     campus_cidrs: Option<Vec<String>>,
@@ -141,6 +144,7 @@ fn main() -> Result<()> {
         Some(Command::Config { command }) => run_config_command(command),
         Some(Command::Paths) => {
             println!("config: {}", AppConfig::config_path()?.display());
+            println!("log: {}", AppConfig::log_path()?.display());
             Ok(())
         }
         Some(Command::Autostart { command }) => run_autostart_command(command),
@@ -173,6 +177,10 @@ fn run_config_command(command: ConfigCommand) -> Result<()> {
                 config.daemon.online_check_interval_secs = interval;
                 changed = true;
             }
+            if let Some(interval) = args.offline_check_interval_secs {
+                config.daemon.offline_check_interval_secs = interval;
+                changed = true;
+            }
             if let Some(timeout) = args.request_timeout_secs {
                 config.detect.request_timeout_secs = timeout;
                 changed = true;
@@ -188,7 +196,7 @@ fn run_config_command(command: ConfigCommand) -> Result<()> {
 
             if !changed {
                 bail!(
-                    "no values provided; use --username/--password/--portal-url/--probe-url/--campus-cidrs/--campus-gateways"
+                    "no values provided; use --username/--password/--portal-url/--probe-url/--online-check-interval-secs/--offline-check-interval-secs/--request-timeout-secs/--campus-cidrs/--campus-gateways"
                 );
             }
 
@@ -214,16 +222,16 @@ fn run_autostart_command(command: AutostartCommand) -> Result<()> {
     match command {
         AutostartCommand::Install => {
             let path = install_autostart()?;
-            println!("installed autostart file: {}", path.display());
+            println!("installed autostart entry: {}", path.display());
             Ok(())
         }
         AutostartCommand::Remove => {
             let path = remove_autostart()?;
-            println!("removed autostart file: {}", path.display());
+            println!("removed autostart entry: {}", path.display());
             Ok(())
         }
         AutostartCommand::Path => {
-            println!("autostart file: {}", show_autostart_path()?.display());
+            println!("autostart entry: {}", show_autostart_path()?.display());
             Ok(())
         }
     }

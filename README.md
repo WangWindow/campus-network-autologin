@@ -13,6 +13,7 @@ Lightweight Dr.COM campus network auto-login tool written in Rust.
 - Only attempts campus authentication when the configured campus gateway looks reachable
 - Detects captive-portal redirects and re-authenticates automatically
 - Sleeps between checks to keep CPU usage negligible once the network is online
+- Writes daemon logs to `campus-network/daemon.log` under the platform config directory
 
 ## Commands
 
@@ -62,6 +63,7 @@ request_timeout_secs = 8
 
 [daemon]
 online_check_interval_secs = 300
+offline_check_interval_secs = 15
 
 [campus]
 ipv4_cidrs = []
@@ -121,7 +123,7 @@ campus-network-autologin autostart install
 
 This writes a platform-specific startup file that points to the current executable absolute path:
 
-- Windows: Startup folder `campus-network-autologin.vbs` (hidden window mode)
+- Windows: Task Scheduler entry `campus-network-autologin` (runs hidden at user logon)
 - Linux: `~/.config/systemd/user/campus-network-autologin.service`
 - macOS: `~/Library/LaunchAgents/com.campus-network-autologin.plist`
 

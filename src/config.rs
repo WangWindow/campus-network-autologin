@@ -11,6 +11,7 @@ const DEFAULT_PORTAL_URL: &str = "http://172.18.3.3/0.htm";
 const DEFAULT_PROBE_URL: &str = "http://www.baidu.com/";
 const DEFAULT_REQUEST_TIMEOUT_SECS: u64 = 8;
 const DEFAULT_ONLINE_CHECK_INTERVAL_SECS: u64 = 300;
+const DEFAULT_OFFLINE_CHECK_INTERVAL_SECS: u64 = 15;
 const DEFAULT_CAMPUS_CIDRS: &[&str] = &[];
 const DEFAULT_CAMPUS_GATEWAYS: &[&str] = &["172.18.3.3", "172.18.2.2"];
 
@@ -39,6 +40,7 @@ pub struct DetectConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DaemonConfig {
     pub online_check_interval_secs: u64,
+    pub offline_check_interval_secs: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -77,6 +79,7 @@ impl Default for AppConfig {
             },
             daemon: DaemonConfig {
                 online_check_interval_secs: DEFAULT_ONLINE_CHECK_INTERVAL_SECS,
+                offline_check_interval_secs: DEFAULT_OFFLINE_CHECK_INTERVAL_SECS,
             },
             campus: CampusConfig::default(),
         }
@@ -85,9 +88,17 @@ impl Default for AppConfig {
 
 impl AppConfig {
     pub fn config_path() -> Result<PathBuf> {
+        Ok(Self::app_dir()?.join("config.toml"))
+    }
+
+    pub fn log_path() -> Result<PathBuf> {
+        Ok(Self::app_dir()?.join("daemon.log"))
+    }
+
+    fn app_dir() -> Result<PathBuf> {
         let dirs = BaseDirs::new()
             .ok_or_else(|| anyhow!("could not resolve a platform config directory"))?;
-        Ok(dirs.config_dir().join("campus-network").join("config.toml"))
+        Ok(dirs.config_dir().join("campus-network"))
     }
 
     pub fn load() -> Result<Self> {
@@ -133,6 +144,9 @@ impl AppConfig {
         }
         if self.daemon.online_check_interval_secs == 0 {
             bail!("online_check_interval_secs must be greater than zero");
+        }
+        if self.daemon.offline_check_interval_secs == 0 {
+            bail!("offline_check_interval_secs must be greater than zero");
         }
         for cidr in &self.campus.ipv4_cidrs {
             cidr.parse::<ipnet::Ipv4Net>()
