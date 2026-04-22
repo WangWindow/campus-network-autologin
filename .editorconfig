@@ -1,0 +1,7 @@
+[root]
+charset = utf-8
+indent_style = space
+indent_size = 4
+line_ending = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
