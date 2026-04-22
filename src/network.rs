@@ -1,10 +1,9 @@
 use std::{
-    net::{IpAddr, SocketAddr, TcpStream, ToSocketAddrs},
+    net::{Ipv4Addr, SocketAddr, TcpStream, ToSocketAddrs},
     time::Duration,
 };
 
 use anyhow::{Context, Result};
-use if_addrs::get_if_addrs;
 use ipnet::Ipv4Net;
 
 use crate::config::AppConfig;
@@ -75,19 +74,6 @@ pub fn detect_campus_environment(config: &AppConfig) -> Result<CampusEnvironment
     Ok(CampusEnvironment::OnCampus(reason))
 }
 
-fn local_ipv4_addresses() -> Result<Vec<std::net::Ipv4Addr>> {
-    let mut addresses = get_if_addrs()?
-        .into_iter()
-        .filter_map(|iface| match iface.ip() {
-            IpAddr::V4(ip) if !ip.is_loopback() => Some(ip),
-            _ => None,
-        })
-        .collect::<Vec<_>>();
-    addresses.sort_unstable();
-    addresses.dedup();
-    Ok(addresses)
-}
-
 fn parse_ipv4_cidrs(cidr_values: &[String]) -> Result<Vec<Ipv4Net>> {
     cidr_values
         .iter()
@@ -128,6 +114,29 @@ fn format_ipv4_list(addresses: &[std::net::Ipv4Addr]) -> String {
         .map(ToString::to_string)
         .collect::<Vec<_>>()
         .join(", ")
+}
+
+#[cfg(any(unix, windows))]
+fn local_ipv4_addresses() -> Result<Vec<Ipv4Addr>> {
+    use std::net::IpAddr;
+
+    use if_addrs::get_if_addrs;
+
+    let mut addresses = get_if_addrs()?
+        .into_iter()
+        .filter_map(|iface| match iface.ip() {
+            IpAddr::V4(ip) if !ip.is_loopback() => Some(ip),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    addresses.sort_unstable();
+    addresses.dedup();
+    Ok(addresses)
+}
+
+#[cfg(not(any(unix, windows)))]
+fn local_ipv4_addresses() -> Result<Vec<Ipv4Addr>> {
+    anyhow::bail!("local IPv4 enumeration is not implemented for this platform")
 }
 
 #[cfg(test)]
