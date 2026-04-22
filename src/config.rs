@@ -4,7 +4,7 @@ use std::{
 };
 
 use anyhow::{Context, Result, anyhow, bail};
-use directories::ProjectDirs;
+use directories::BaseDirs;
 use serde::{Deserialize, Serialize};
 
 const DEFAULT_PORTAL_URL: &str = "http://172.18.3.3/0.htm";
@@ -85,9 +85,9 @@ impl Default for AppConfig {
 
 impl AppConfig {
     pub fn config_path() -> Result<PathBuf> {
-        let dirs = ProjectDirs::from("", "", "campus-network")
+        let dirs = BaseDirs::new()
             .ok_or_else(|| anyhow!("could not resolve a platform config directory"))?;
-        Ok(dirs.config_dir().join("config.toml"))
+        Ok(dirs.config_dir().join("campus-network").join("config.toml"))
     }
 
     pub fn load() -> Result<Self> {

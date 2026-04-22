@@ -42,6 +42,10 @@ campus-network-autologin run
 
 # Print the config path
 campus-network-autologin paths
+
+# Install/remove user autostart entry for this executable
+campus-network-autologin autostart install
+campus-network-autologin autostart remove
 ```
 
 ## Config file
@@ -82,8 +86,15 @@ v6ip=
 - `Enter`: jump to the next field or activate the selected button
 - `Ctrl+S`: save config
 - `Ctrl+T`: save config and test login immediately
+- `Ctrl+A`: toggle current-user autostart
 - `F2`: show or hide the password
 - `Esc`: quit without saving further changes
+
+Use the `Autostart: ON/OFF` button in TUI to toggle current-user autostart.
+You can toggle it by:
+- selecting that button and pressing `Enter` or `Space`
+- clicking it with the mouse
+- pressing `Ctrl+A`
 
 ## Campus network detection
 
@@ -96,45 +107,23 @@ With the current defaults, the daemon stays idle off-campus and only tries to au
 
 ## Autostart
 
-### Linux: systemd user service
-
-Create `~/.config/systemd/user/campus-network-autologin.service`:
-
-```ini
-[Unit]
-Description=Campus network auto-login
-After=network-online.target
-Wants=network-online.target
-
-[Service]
-Type=simple
-ExecStart=/path/to/campus-network-autologin run
-Restart=always
-RestartSec=10
-
-[Install]
-WantedBy=default.target
-```
-
-Then enable it:
+Install autostart for the current user:
 
 ```bash
-systemctl --user daemon-reload
-systemctl --user enable --now campus-network-autologin.service
-loginctl enable-linger "$USER"
+campus-network-autologin autostart install
 ```
 
-### Windows: Startup folder
+This writes a platform-specific startup file that points to the current executable absolute path:
 
-1. Run `campus-network-autologin paths` once to confirm the config location.
-2. Create a shortcut to `campus-network-autologin.exe`.
-3. Set the shortcut target to:
+- Windows: Startup folder `campus-network-autologin.vbs` (hidden window mode)
+- Linux: `~/.config/systemd/user/campus-network-autologin.service`
+- macOS: `~/Library/LaunchAgents/com.campus-network-autologin.plist`
 
-```text
-campus-network-autologin.exe run
+Remove it:
+
+```bash
+campus-network-autologin autostart remove
 ```
-
-4. Put the shortcut in `shell:startup`.
 
 ## Scope
 

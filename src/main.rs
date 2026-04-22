@@ -1,3 +1,4 @@
+mod autostart;
 mod config;
 mod daemon;
 mod network;
@@ -7,6 +8,7 @@ mod tui;
 use std::time::Duration;
 
 use anyhow::{Result, bail};
+use autostart::{install_autostart, remove_autostart, show_autostart_path};
 use clap::{Args, Parser, Subcommand};
 use config::AppConfig;
 use daemon::run_daemon;
@@ -40,6 +42,11 @@ enum Command {
     },
     /// Print important filesystem paths.
     Paths,
+    /// Manage auto-start registration for the current user.
+    Autostart {
+        #[command(subcommand)]
+        command: AutostartCommand,
+    },
 }
 
 #[derive(Debug, Subcommand)]
@@ -50,6 +57,16 @@ enum ConfigCommand {
     Show,
     /// Launch the interactive setup wizard.
     Init,
+}
+
+#[derive(Debug, Subcommand)]
+enum AutostartCommand {
+    /// Install auto-start for the current user.
+    Install,
+    /// Remove auto-start for the current user.
+    Remove,
+    /// Show the auto-start file path for this platform.
+    Path,
 }
 
 #[derive(Debug, Args)]
@@ -126,6 +143,7 @@ fn main() -> Result<()> {
             println!("config: {}", AppConfig::config_path()?.display());
             Ok(())
         }
+        Some(Command::Autostart { command }) => run_autostart_command(command),
     }
 }
 
@@ -190,6 +208,25 @@ fn run_config_command(command: ConfigCommand) -> Result<()> {
 
 fn interactive_setup() -> Result<()> {
     run_setup_tui(AppConfig::load().unwrap_or_default())
+}
+
+fn run_autostart_command(command: AutostartCommand) -> Result<()> {
+    match command {
+        AutostartCommand::Install => {
+            let path = install_autostart()?;
+            println!("installed autostart file: {}", path.display());
+            Ok(())
+        }
+        AutostartCommand::Remove => {
+            let path = remove_autostart()?;
+            println!("removed autostart file: {}", path.display());
+            Ok(())
+        }
+        AutostartCommand::Path => {
+            println!("autostart file: {}", show_autostart_path()?.display());
+            Ok(())
+        }
+    }
 }
 
 fn portal_client(config: &AppConfig) -> Result<PortalClient> {

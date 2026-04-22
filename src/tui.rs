@@ -6,7 +6,10 @@ use std::{
 
 use anyhow::{Context, Result, anyhow};
 use crossterm::{
-    event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers},
+    event::{
+        self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEvent, KeyEventKind,
+        KeyModifiers, MouseButton, MouseEvent, MouseEventKind,
+    },
     execute,
     terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
@@ -20,13 +23,17 @@ use ratatui::{
 };
 
 use crate::{
+    autostart::{
+        autostart_enabled, install_autostart as install_user_autostart,
+        remove_autostart as remove_user_autostart,
+    },
     config::AppConfig,
     network::{CampusEnvironment, detect_campus_environment},
     portal::{LoginStatus, PortalClient},
 };
 
 const FIELD_COUNT: usize = 8;
-const BUTTON_COUNT: usize = 3;
+const BUTTON_COUNT: usize = 4;
 const LABEL_WIDTH: usize = 24;
 
 pub fn run_setup_tui(config: AppConfig) -> Result<()> {
@@ -40,14 +47,19 @@ pub fn run_setup_tui(config: AppConfig) -> Result<()> {
 fn setup_terminal() -> Result<Terminal<CrosstermBackend<Stdout>>> {
     enable_raw_mode().context("failed to enable raw mode")?;
     let mut stdout = io::stdout();
-    execute!(stdout, EnterAlternateScreen).context("failed to enter alternate screen")?;
+    execute!(stdout, EnterAlternateScreen, EnableMouseCapture)
+        .context("failed to enter alternate screen")?;
     Terminal::new(CrosstermBackend::new(stdout)).context("failed to create terminal")
 }
 
 fn restore_terminal(terminal: &mut Terminal<CrosstermBackend<Stdout>>) -> Result<()> {
     disable_raw_mode().context("failed to disable raw mode")?;
-    execute!(terminal.backend_mut(), LeaveAlternateScreen)
-        .context("failed to leave alternate screen")?;
+    execute!(
+        terminal.backend_mut(),
+        LeaveAlternateScreen,
+        DisableMouseCapture
+    )
+    .context("failed to leave alternate screen")?;
     terminal.show_cursor().context("failed to show cursor")
 }
 
@@ -57,6 +69,7 @@ struct SetupApp {
     show_password: bool,
     status: StatusMessage,
     should_quit: bool,
+    autostart_button_hitbox: Option<Rect>,
 }
 
 impl SetupApp {
@@ -94,6 +107,7 @@ impl SetupApp {
                 "Edit fields, then Save or Save & Test. CIDRs are optional; gateways are required.",
             ),
             should_quit: false,
+            autostart_button_hitbox: None,
         }
     }
 
@@ -105,10 +119,14 @@ impl SetupApp {
                 continue;
             }
 
-            if let Event::Key(key) = event::read().context("failed to read terminal event")? {
-                if key.kind == KeyEventKind::Press {
-                    self.handle_key(key)?;
+            match event::read().context("failed to read terminal event")? {
+                Event::Key(key) => {
+                    if key.kind == KeyEventKind::Press {
+                        self.handle_key(key)?;
+                    }
                 }
+                Event::Mouse(mouse) => self.handle_mouse(mouse),
+                _ => {}
             }
         }
 
@@ -162,6 +180,15 @@ impl SetupApp {
                 modifiers,
                 ..
             } if modifiers.contains(KeyModifiers::CONTROL) => self.save_and_test(),
+            KeyEvent {
+                code: KeyCode::Char('a'),
+                modifiers,
+                ..
+            } if modifiers.contains(KeyModifiers::CONTROL) => self.toggle_autostart_entry(),
+            KeyEvent {
+                code: KeyCode::Char(' '),
+                ..
+            } if self.focus == FIELD_COUNT + 2 => self.toggle_autostart_entry(),
             KeyEvent {
                 code: KeyCode::Enter,
                 ..
@@ -220,7 +247,20 @@ impl SetupApp {
         Ok(())
     }
 
-    fn draw(&self, frame: &mut Frame) {
+    fn handle_mouse(&mut self, mouse: MouseEvent) {
+        if matches!(mouse.kind, MouseEventKind::Down(MouseButton::Left)) {
+            if let Some(rect) = self.autostart_button_hitbox {
+                let inside_x = mouse.column >= rect.x && mouse.column < rect.x + rect.width;
+                let inside_y = mouse.row >= rect.y && mouse.row < rect.y + rect.height;
+                if inside_x && inside_y {
+                    self.focus = FIELD_COUNT + 2;
+                    self.toggle_autostart_entry();
+                }
+            }
+        }
+    }
+
+    fn draw(&mut self, frame: &mut Frame) {
         let area = frame.area();
         let chunks = Layout::default()
             .direction(Direction::Vertical)
@@ -247,7 +287,7 @@ impl SetupApp {
         self.draw_status(frame, chunks[3]);
     }
 
-    fn draw_form(&self, frame: &mut Frame, area: Rect) {
+    fn draw_form(&mut self, frame: &mut Frame, area: Rect) {
         let block = Block::default()
             .title("Setup")
             .borders(Borders::ALL)
@@ -284,13 +324,18 @@ impl SetupApp {
 
         let path_line = Rect {
             x: inner.x,
-            y: inner.y + FIELD_COUNT as u16 + 1,
+            y: inner.y + FIELD_COUNT as u16,
             width: inner.width,
-            height: 2,
+            height: 3,
         };
         let config_path = match AppConfig::config_path() {
             Ok(path) => path.display().to_string(),
             Err(error) => format!("unavailable: {error}"),
+        };
+        let autostart_state = match autostart_enabled() {
+            Ok(true) => "enabled",
+            Ok(false) => "disabled",
+            Err(_) => "unavailable",
         };
         frame.render_widget(
             Paragraph::new(vec![
@@ -303,6 +348,7 @@ impl SetupApp {
                         "hidden"
                     }
                 )),
+                Line::from(format!("Autostart: {autostart_state}")),
             ])
             .wrap(Wrap { trim: true }),
             path_line,
@@ -310,11 +356,13 @@ impl SetupApp {
 
         let button_row = Rect {
             x: inner.x,
-            y: inner.y + FIELD_COUNT as u16 + 4,
+            y: inner.y + FIELD_COUNT as u16 + 3,
             width: inner.width,
             height: 1,
         };
-        frame.render_widget(Paragraph::new(self.button_line()), button_row);
+        let labels = self.button_labels();
+        frame.render_widget(Paragraph::new(self.button_line(&labels)), button_row);
+        self.autostart_button_hitbox = self.autostart_button_hitbox(&labels, button_row);
 
         if self.focus < FIELD_COUNT {
             let field = &self.fields[self.focus];
@@ -347,8 +395,21 @@ impl SetupApp {
         );
     }
 
-    fn button_line(&self) -> Line<'static> {
-        let buttons = ["Save", "Save & Test", "Quit"];
+    fn button_labels(&self) -> Vec<String> {
+        let autostart_button = match autostart_enabled() {
+            Ok(true) => "Autostart: ON",
+            Ok(false) => "Autostart: OFF",
+            Err(_) => "Autostart: N/A",
+        };
+        vec![
+            "Save".to_owned(),
+            "Save & Test".to_owned(),
+            autostart_button.to_owned(),
+            "Quit".to_owned(),
+        ]
+    }
+
+    fn button_line(&self, buttons: &[String]) -> Line<'static> {
         let spans = buttons
             .iter()
             .enumerate()
@@ -366,6 +427,24 @@ impl SetupApp {
             })
             .collect::<Vec<_>>();
         Line::from(spans)
+    }
+
+    fn autostart_button_hitbox(&self, buttons: &[String], row: Rect) -> Option<Rect> {
+        let mut x = row.x;
+        for (index, label) in buttons.iter().enumerate() {
+            let button = format!("[ {label} ]");
+            let width = button.chars().count() as u16;
+            if index == 2 {
+                return Some(Rect {
+                    x,
+                    y: row.y,
+                    width,
+                    height: 1,
+                });
+            }
+            x = x.saturating_add(width + 2);
+        }
+        None
     }
 
     fn current_field_mut(&mut self) -> &mut InputField {
@@ -400,7 +479,8 @@ impl SetupApp {
         match self.focus - FIELD_COUNT {
             0 => self.save(),
             1 => self.save_and_test(),
-            2 => {
+            2 => self.toggle_autostart_entry(),
+            3 => {
                 self.should_quit = true;
             }
             _ => {}
@@ -453,6 +533,26 @@ impl SetupApp {
                     }
                 };
             }
+            Err(error) => self.status = StatusMessage::error(error.to_string()),
+        }
+    }
+
+    fn toggle_autostart_entry(&mut self) {
+        match autostart_enabled() {
+            Ok(true) => match remove_user_autostart() {
+                Ok(path) => {
+                    self.status =
+                        StatusMessage::success(format!("Autostart disabled: {}", path.display()));
+                }
+                Err(error) => self.status = StatusMessage::error(error.to_string()),
+            },
+            Ok(false) => match install_user_autostart() {
+                Ok(path) => {
+                    self.status =
+                        StatusMessage::success(format!("Autostart enabled: {}", path.display()));
+                }
+                Err(error) => self.status = StatusMessage::error(error.to_string()),
+            },
             Err(error) => self.status = StatusMessage::error(error.to_string()),
         }
     }
